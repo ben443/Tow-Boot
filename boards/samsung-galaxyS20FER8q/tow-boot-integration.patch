@@ -1,0 +1,184 @@
+diff --git a/Makefile b/Makefile
+index 76b44e1..e766e86 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2311,7 +2311,7 @@ endif
+ # Use sed to remove leading zeros from PATCHLEVEL to avoid using octal numbers
+ define filechk_version.h
+ 	(echo \#define PLAIN_VERSION \"$(UBOOTRELEASE)\"; \
+-	echo \#define U_BOOT_VERSION \"U-Boot \" PLAIN_VERSION; \
++	echo \#define U_BOOT_VERSION \"Tow-Boot \" PLAIN_VERSION; \
+ 	echo \#define U_BOOT_VERSION_NUM $(VERSION); \
+ 	echo \#define U_BOOT_VERSION_NUM_PATCH $$(echo $(PATCHLEVEL) | \
+ 		sed -e "s/^0*//"); \
+diff --git a/board/qualcomm/qcom-phone.env b/board/qualcomm/qcom-phone.env
+index be0d80a..35977b8 100644
+--- a/board/qualcomm/qcom-phone.env
++++ b/board/qualcomm/qcom-phone.env
+@@ -1,4 +1,5 @@
+-bootdelay=0
++board_identifier=@boardIdentifier@
++bootdelay=2
+ bootretry=1
+ stdin=serial,button-kbd
+ stdout=serial,vidconsole
+@@ -16,7 +17,7 @@ serial_gadget=setenv stdin serial,button-kbd,usbacm; \
+ 	setenv stdout serial,vidconsole,usbacm; \
+ 	setenv stderr serial,vidconsole,usbacm; \
+ 	setenv bootretry -1; \
+-	echo Enabled U-Boot console serial gadget
++	echo Enabled Tow-Boot console serial gadget
+ 
+ # bootretry will run this command over and over, if we fail once
+ # then bail out to the boot menu instead (with a pause to read
+@@ -26,21 +27,26 @@ bootcmd=bootefi bootmgr; pause; run menucmd
+ # When entering the menu (either from button press or failed boot)
+ # remap bootcmd so it will re-open the menu and we won't get stuck
+ # at the console with no way to type
+-menucmd=setenv bootcmd run menucmd; bootmenu -1
++menucmd=setenv bootcmd run menucmd; run towboot_menu
+ 
+ # Pause is used so the output can be read on the display
+-bootmenu_0=Boot=bootefi bootmgr; pause
+-bootmenu_1=Enable serial console gadget=run serial_gadget
+-bootmenu_2=Enable USB mass storage=echo "Press any key to exit UMS mode"; ums 0 scsi 0
+-bootmenu_3=Enable fastboot mode=echo "Press any key to exit fastboot mode"; run fastboot
+-# Disabling bootretry means we'll just drop the shell
+-bootmenu_4=Drop to shell=setenv bootretry -1
+-bootmenu_5=Reset device=reset
+-bootmenu_6=Dump clocks=clk dump; pause
+-bootmenu_7=Dump environment=printenv; pause
+-bootmenu_8=Board info=bdinfo; pause
+-bootmenu_9=Dump bootargs=fdt addr $fdt_addr_r; fdt print /chosen bootargs; pause
+-bootmenu_10=Power off=poweroff
++towboot_menu=tb_menu new; \
++	tb_menu add 'Boot' 'Start the EFI boot manager' 'bootefi bootmgr; pause; run menucmd'; \
++	tb_menu add 'Scan boot devices' 'Find and boot operating systems' 'bootflow scan -b; pause; run menucmd'; \
++	tb_menu separator; \
++	tb_menu add 'USB serial console' 'Enable the USB console' 'run serial_gadget; run menucmd'; \
++	tb_menu add 'USB mass storage' 'Expose internal UFS over USB' 'echo Press any key to exit; ums 0 scsi 0; run menucmd'; \
++	tb_menu add 'Fastboot' 'Start USB fastboot mode' 'run fastboot; run menucmd'; \
++	tb_menu add 'Firmware Console' 'Exit to the command line' 'setenv bootretry -1; cls; echo Use run menucmd to return'; \
++	tb_menu separator; \
++	tb_menu add 'Dump clocks' 'Display clock information' 'clk dump; pause; run menucmd'; \
++	tb_menu add 'Dump environment' 'Display firmware variables' 'printenv; pause; run menucmd'; \
++	tb_menu add 'Board info' 'Display board information' 'bdinfo; pause; run menucmd'; \
++	tb_menu add 'Dump bootargs' 'Display kernel arguments' 'fdt addr $fdt_addr_r; fdt print /chosen bootargs; pause; run menucmd'; \
++	tb_menu separator; \
++	tb_menu add 'Reboot' 'Restart the device' 'reset'; \
++	tb_menu add 'Shutdown' 'Power off the device' 'poweroff'; \
++	tb_menu show
+ 
+ # Allow holding the volume down button while U-Boot loads to enter
+ # the boot menu
+diff --git a/cmd/Kconfig b/cmd/Kconfig
+index 35ce42f..573d191 100644
+--- a/cmd/Kconfig
++++ b/cmd/Kconfig
+@@ -11,6 +11,8 @@ menuconfig CMDLINE
+ 
+ if CMDLINE
+ 
++source "cmd/tow-boot/Kconfig"
++
+ config HUSH_PARSER
+ 	bool "Use hush shell"
+ 	help
+diff --git a/cmd/Makefile b/cmd/Makefile
+index ce772e5..5a17af0 100644
+--- a/cmd/Makefile
++++ b/cmd/Makefile
+@@ -301,3 +301,5 @@ $(obj)/license_data_size.h: $(srctree)/Licenses/gpl-2.0.txt FORCE
+ 	$(call filechk,data_size)
+ 
+ CFLAGS_ethsw.o := -Wno-enum-conversion
++
++obj-y += tow-boot/
+diff --git a/common/splash.c b/common/splash.c
+index c559129..6474a4f 100644
+--- a/common/splash.c
++++ b/common/splash.c
+@@ -22,6 +22,7 @@
+ 
+ #include <display_options.h>
+ #include <env.h>
++#include <mapmem.h>
+ #include <splash.h>
+ #include <video.h>
+ #include <vsprintf.h>
+@@ -160,6 +161,9 @@ void splash_display_banner(void)
+  */
+ int splash_display(void)
+ {
++#if defined(CONFIG_TOW_BOOT_MENU) && defined(CONFIG_VIDEO_LOGO)
++	return bmp_display(map_to_sysmem(bmp_logo_bitmap), -1, -1);
++#else
+ 	ulong addr;
+ 	char *s;
+ 	int x = 0, y = 0, ret;
+@@ -190,4 +194,5 @@ int splash_display(void)
+ #endif
+ end:
+ 	return ret;
++#endif
+ }
+diff --git a/common/version.c b/common/version.c
+index 6e27bb8..080e84b 100644
+--- a/common/version.c
++++ b/common/version.c
+@@ -8,8 +8,7 @@
+ #include <version.h>
+ #include <version_string.h>
+ 
+-#define U_BOOT_VERSION_STRING U_BOOT_VERSION " (" U_BOOT_DATE " - " \
+-	U_BOOT_TIME " " U_BOOT_TZ ")" CONFIG_IDENT_STRING
++#define U_BOOT_VERSION_STRING U_BOOT_VERSION " " CONFIG_IDENT_STRING
+ 
+ const char version_string[] = U_BOOT_VERSION_STRING;
+ const unsigned short version_num = U_BOOT_VERSION_NUM;
+diff --git a/lib/Kconfig b/lib/Kconfig
+index 24e55ad..0cc7fc3 100644
+--- a/lib/Kconfig
++++ b/lib/Kconfig
+@@ -1351,3 +1351,4 @@ config UTHREAD_STACK_SIZE
+ endmenu
+ 
+ source "lib/fwu_updates/Kconfig"
++source "lib/PDCursesMod/Kconfig"
+diff --git a/lib/Makefile b/lib/Makefile
+index 222378a..04b3823 100644
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -12,6 +12,7 @@ obj-$(CONFIG_CMD_BOOTEFI_SELFTEST) += efi_selftest/
+ obj-$(CONFIG_FWU_MULTI_BANK_UPDATE) += fwu_updates/
+ obj-$(CONFIG_LZMA) += lzma/
+ obj-$(CONFIG_BZIP2) += bzip2/
++obj-$(CONFIG_PDCURSES) += PDCursesMod/
+ obj-$(CONFIG_FIT) += libfdt/
+ obj-$(CONFIG_OF_LIVE) += of_live.o
+ obj-$(CONFIG_CMD_DHRYSTONE) += dhry/
+diff --git a/lib/smbios.c b/lib/smbios.c
+index afde640..e013672 100644
+--- a/lib/smbios.c
++++ b/lib/smbios.c
+@@ -17,6 +17,7 @@
+ #include <sysinfo.h>
+ #include <tables_csum.h>
+ #include <version.h>
++#include <version_string.h>
+ #include <malloc.h>
+ #include <dm/ofnode.h>
+ #ifdef CONFIG_CPU
+@@ -472,10 +473,10 @@ static int smbios_write_type0(ulong *current, int *handle,
+ 	fill_smbios_header(t, SMBIOS_BIOS_INFORMATION, len, *handle);
+ 	smbios_set_eos(ctx, t->eos);
+ 	t->vendor = smbios_add_prop_si(ctx, NULL, SYSID_SM_BIOS_VENDOR,
+-				       "U-Boot");
++				       "Tow-Boot");
+ 
+ 	t->bios_ver = smbios_add_prop_si(ctx, "version", SYSID_SM_BIOS_VER,
+-					 PLAIN_VERSION);
++					 version_string);
+ 	if (t->bios_ver)
+ 		gd->smbios_version = ctx->last_str;
+ 	log_debug("smbios_version = %p: '%s'\n", gd->smbios_version,

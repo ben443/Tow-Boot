@@ -41,6 +41,13 @@ in
           (Use sparingly.)
         '';
       };
+      environmentFile = mkOption {
+        type = types.str;
+        default = "include/tow-boot_env.h";
+        description = ''
+          Source file containing the @boardIdentifier@ environment placeholder.
+        '';
+      };
       installPhase = mkOption {
         type = types.lines;
         description = ''
@@ -106,6 +113,7 @@ in
         , buildInputs
         , nativeBuildInputs
         , postPatch
+        , environmentFile
         , uswidHelper
         }:
 
@@ -139,7 +147,7 @@ in
             ''
             + (lib.optionalString (!buildUBoot) ''
               echo ":: Sneaking in boardIdentifier in the Tow-Boot environment"
-              substituteInPlace include/tow-boot_env.h \
+              substituteInPlace ${lib.escapeShellArg environmentFile} \
                 --replace "@boardIdentifier@" "${boardIdentifier}"
             '')
             + postPatch
@@ -302,6 +310,7 @@ in
           buildInputs
           nativeBuildInputs
           postPatch
+          environmentFile
         ;
         boardIdentifier = config.device.identifier;
         uswidHelper = config.Tow-Boot.uswid.output.helper;
