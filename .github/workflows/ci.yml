@@ -18,7 +18,13 @@ jobs:
           fetch-depth: 0
       - uses: DeterminateSystems/nix-installer-action@v4
       - id: devices-matrix
-        run: printf "matrix=%s" "$(nix-instantiate --json --eval .ci/devices-list.nix)" >> $GITHUB_OUTPUT
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            devices=$(nix-instantiate --json --eval --arg releaseOnly true .ci/devices-list.nix)
+          else
+            devices=$(nix-instantiate --json --eval .ci/devices-list.nix)
+          fi
+          printf "matrix=%s" "$devices" >> $GITHUB_OUTPUT
     outputs:
       matrix: ${{ steps.devices-matrix.outputs.matrix }}
 
