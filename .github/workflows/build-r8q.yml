@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Galaxy S20 FE (R8Q) experimental U-Boot
+    name: Galaxy S20 FE (R8Q) experimental Tow-Boot
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -23,6 +23,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends device-tree-compiler
       - name: Build R8Q firmware
         run: nix-build -A samsung-galaxyS20FER8q -o result-r8q
+      - name: Verify Tow-Boot features
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_r8q_tow_boot.py'
+          python3 .github/scripts/check-r8q-tow-boot.py \
+            result-r8q/config/noenv.config result-r8q/r8q-build/u-boot.bin
       - name: Extract matching packaging tools and Samsung inputs
         run: |
           archive=$(nix-build -A samsung-galaxyS20FER8q.config.Tow-Boot.src --no-out-link)
@@ -36,8 +41,9 @@ jobs:
             "$PWD/result-r8q/r8q-build" "$PWD/artifacts/r8q"
           cp result-r8q/config/noenv.config artifacts/r8q/build.config
           {
-            echo "Experimental U-Boot for Samsung Galaxy S20 FE (R8Q/SM8250)"
-            echo "Not a full Tow-Boot port; no hardware boot test performed by CI."
+            echo "Experimental Tow-Boot for Samsung Galaxy S20 FE (R8Q/SM8250)"
+            echo "Tow-Boot menu and logo on the pinned R8Q hardware-support fork."
+            echo "No hardware boot test performed by CI."
             echo "Samsung boot image inputs come from the pinned U-Boot source."
             echo "Verify compatibility with your exact model and firmware before flashing."
             echo "Tow-Boot repository revision: $(git rev-parse HEAD)"
@@ -53,7 +59,8 @@ jobs:
           {
             echo "### Experimental R8Q image"
             echo 'Download `r8q-boot-image` below and extract `u-boot-r8q-boot.img`.'
-            echo "This is U-Boot packaged through Tow-Boot's build infrastructure, not a full Tow-Boot port."
+            echo "Includes the Tow-Boot menu and logo while retaining the R8Q EFI boot path."
+            echo "Hold Volume Down at startup for the menu; use volume keys and Power to select."
             echo "Packaging is validated; booting on hardware is not."
             echo "The image uses the pinned fork's Samsung DTBs and header."
             echo "Confirm they match your phone firmware and have a recovery path before flashing."

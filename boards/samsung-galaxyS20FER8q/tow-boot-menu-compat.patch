@@ -1,0 +1,116 @@
+diff --git a/cmd/tow-boot/tow-boot_menu.c b/cmd/tow-boot/tow-boot_menu.c
+index 0e4ce57..25a609e 100644
+--- a/cmd/tow-boot/tow-boot_menu.c
++++ b/cmd/tow-boot/tow-boot_menu.c
+@@ -6,7 +6,10 @@
+ #include <PDCurses/curses.h>
+ 
+ #include <command.h>
+-#include <common.h>
++#include <cli.h>
++#include <malloc.h>
++#include <stdio.h>
++#include <linux/string.h>
+ #include <linux/compat.h>
+ #include <serial.h>
+ #include <splash.h>
+@@ -43,7 +46,6 @@ static menustate *current_menu = NULL;
+ 
+ static void draw_item(menustate *state, int i, bool selected)
+ {
+-	char label[MAX_LEN+3];
+ 	menuentry *iter = state->first_entry;
+ 
+ 	if (selected) {
+@@ -57,17 +59,17 @@ static void draw_item(menustate *state, int i, bool selected)
+ 
+ 	// A separator is just an empty line.
+ 	if (iter->separator) {
+-		sprintf(label, "");
++		mvwprintw(state->menu, iter->number-1, 0, " %-*s ", MAX_LEN, "");
+ 	}
+ 	else {
+-		sprintf(label, " %-" xstr(MAX_LEN) "s ", iter->label);
++		mvwprintw(state->menu, iter->number-1, 0, " %-*.*s ",
++			  MAX_LEN, MAX_LEN, iter->label);
+ 	}
+-	mvwprintw(state->menu, iter->number-1, 0, "%s", label);
+ 
+ 	if (selected) {
+ 		wattroff(state->menu, A_STANDOUT);
+-		sprintf(label, " %-" xstr(MAX_LEN) "s ", iter->description);
+-		mvwprintw(current_menu->help, 0, 0, "%s", label);
++		mvwprintw(state->help, 0, 0, " %-*.*s ",
++			  MAX_LEN, MAX_LEN, iter->description);
+ 	}
+ }
+ 
+@@ -135,6 +137,9 @@ static void menu_delete(menustate *state)
+ 	menuentry *next = NULL;
+ 	while (iter) {
+ 		next = iter->next;
++		free(iter->label);
++		free(iter->description);
++		free(iter->command);
+ 		free(iter);
+ 		iter = next;
+ 	}
+@@ -302,6 +307,7 @@ static int do_show(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[]
+ 	}
+ 
+ 	// Cleanup
++	delwin(current_menu->help);
+ 	delwin(current_menu->menu);
+ 	delwin(current_menu->window);
+ 	wrefresh(stdscr);
+@@ -331,7 +337,7 @@ static int do_separator(struct cmd_tbl *cmdtp, int flag, int argc, char *const a
+ 		current_menu = calloc(1, sizeof(menustate));
+ 	}
+ 
+-	entry = menu_add_entry(current_menu, "", "", "");
++	entry = menu_add_entry(current_menu, strdup(""), strdup(""), strdup(""));
+ 	entry->separator = true;
+ 
+ 	return CMD_RET_SUCCESS;
+@@ -404,4 +410,4 @@ U_BOOT_CMD(
+ 	"tb_menu show                                 - Shows the current menu, dropped on exit.\n"
+ 	"tb_menu add <label> <description> <command>  - Add entry\n"
+ 	"tb_menu separator                            - Add a separator\n"
+-)
++);
+diff --git a/lib/PDCursesMod/ansi/pdcscrn.c b/lib/PDCursesMod/ansi/pdcscrn.c
+index 07d9b0c..4ec2558 100644
+--- a/lib/PDCursesMod/ansi/pdcscrn.c
++++ b/lib/PDCursesMod/ansi/pdcscrn.c
+@@ -21,7 +21,9 @@ static struct termios orig_term;
+ #include "../common/pdccolor.c"
+ 
+ #ifdef __U_BOOT__
+-#include <common.h>
++#include <stdio.h>
++#include <time.h>
++#include <linux/errno.h>
+ #include <dm/device.h>
+ #include <env.h>
+ #include <video_console.h>
+@@ -167,7 +169,7 @@ static int __maybe_unused query_vidconsole(int *rows, int *cols)
+ 	struct udevice *dev;
+ 	struct vidconsole_priv *priv;
+ 
+-	if (!stdout_name || strncmp(stdout_name, "vidconsole", 10) == 0)
++	if (!stdout_name || !strstr(stdout_name, "vidconsole"))
+ 		return -ENODEV;
+ 	stdout_dev = stdio_get_by_name("vidconsole");
+ 	if (!stdout_dev)
+diff --git a/lib/PDCursesMod/curspriv.h b/lib/PDCursesMod/curspriv.h
+index 756f5ef..26dc061 100644
+--- a/lib/PDCursesMod/curspriv.h
++++ b/lib/PDCursesMod/curspriv.h
+@@ -23,6 +23,7 @@
+ #endif
+ 
+ #ifdef __U_BOOT__
++#include <linux/kernel.h>
+ #include <vsprintf.h>
+ #endif
+ 
