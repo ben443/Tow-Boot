@@ -1,4 +1,4 @@
-name: Build R8Q boot image
+name: Build R8Q Tow-Boot image
 
 on:
   workflow_dispatch:
@@ -39,6 +39,10 @@ jobs:
         run: |
           bash r8q-source/.github/scripts/r8q-package.sh \
             "$PWD/result-r8q/r8q-build" "$PWD/artifacts/r8q"
+          mv artifacts/r8q/u-boot-r8q-boot.img artifacts/r8q/tow-boot-r8q-boot.img
+          python3 .github/scripts/check-r8q-tow-boot.py \
+            result-r8q/config/noenv.config result-r8q/r8q-build/u-boot.bin \
+            --boot-image artifacts/r8q/tow-boot-r8q-boot.img
           cp result-r8q/config/noenv.config artifacts/r8q/build.config
           {
             echo "Experimental Tow-Boot for Samsung Galaxy S20 FE (R8Q/SM8250)"
@@ -47,6 +51,9 @@ jobs:
             echo "Samsung boot image inputs come from the pinned U-Boot source."
             echo "Verify compatibility with your exact model and firmware before flashing."
             echo "Tow-Boot repository revision: $(git rev-parse HEAD)"
+            echo "Flashable image: tow-boot-r8q-boot.img"
+            echo "Artifact: tow-boot-r8q-$GITHUB_SHA"
+            echo "Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "U-Boot source URL:"
             nix-instantiate --eval --strict --json \
               -A samsung-galaxyS20FER8q.config.Tow-Boot.src.url
@@ -54,11 +61,13 @@ jobs:
           (
             cd artifacts/r8q
             sha256sum u-boot.bin u-boot-control.dtb sm8250-samsung-r8q.dtb \
-              u-boot-r8q-boot.img build.config BUILD_INFO.txt > SHA256SUMS
+              tow-boot-r8q-boot.img build.config BUILD_INFO.txt > SHA256SUMS
           )
           {
             echo "### Experimental R8Q image"
-            echo 'Download `r8q-boot-image` below and extract `u-boot-r8q-boot.img`.'
+            echo "Download artifact: tow-boot-r8q-$GITHUB_SHA"
+            echo 'Flashable image: `tow-boot-r8q-boot.img` (not the raw `u-boot.bin`).'
+            echo 'Older `r8q-boot-image` artifacts can contain plain U-Boot; do not use them for this build.'
             echo "Includes the Tow-Boot menu and logo while retaining the R8Q EFI boot path."
             echo "Hold Volume Down at startup for the menu; use volume keys and Power to select."
             echo "Packaging is validated; booting on hardware is not."
@@ -68,7 +77,7 @@ jobs:
       - name: Upload boot image and matching artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: r8q-boot-image
+          name: tow-boot-r8q-${{ github.sha }}
           path: artifacts/r8q/
           if-no-files-found: error
           retention-days: 30
