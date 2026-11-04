@@ -49,8 +49,9 @@ def verify_boot_image(binary, image):
 
     kernel_size = struct.unpack_from("<I", image, 8)[0]
     page_size, header_version = struct.unpack_from("<II", image, 36)
-    if header_version != 2 or page_size != 4096:
-        raise ValueError("expected Android boot image header v2 with 4096-byte pages")
+    header_size = struct.unpack_from("<I", image, 1644)[0]
+    if header_version != 2 or page_size != 4096 or header_size != 1660:
+        raise ValueError("expected Android boot image header v2 with 4096-byte pages and a 1660-byte header")
     if kernel_size != len(binary) or image[page_size:page_size + kernel_size] != binary:
         raise ValueError("boot image kernel does not match the verified Tow-Boot binary")
 

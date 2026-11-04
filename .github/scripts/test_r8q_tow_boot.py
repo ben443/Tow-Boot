@@ -61,6 +61,7 @@ CONFIG_DEFAULT_DEVICE_TREE="qcom/sm8250-samsung-r8q"
         header[:8] = b"ANDROID!"
         struct.pack_into("<I", header, 8, len(binary))
         struct.pack_into("<II", header, 36, 4096, 2)
+        struct.pack_into("<I", header, 1644, 1660)
         return bytes(header) + binary
 
     def test_packaged_tow_boot(self):
@@ -88,7 +89,15 @@ CONFIG_DEFAULT_DEVICE_TREE="qcom/sm8250-samsung-r8q"
                 check_r8q.verify_boot_image(self.binary, image[:size])
 
     def test_invalid_boot_image_header(self):
-        for offset, value in ((0, 0), (8, 0), (36, 2048), (40, 3)):
+        for offset, value in (
+            (0, 0),
+            (8, 0),
+            (36, 2048),
+            (40, 3),
+            (1644, 0),
+            (1644, 1661),
+            (1644, 0xFFFFFFFF),
+        ):
             image = bytearray(self.boot_image(self.binary))
             struct.pack_into("<I", image, offset, value)
             with self.subTest(offset=offset), self.assertRaises(ValueError):
